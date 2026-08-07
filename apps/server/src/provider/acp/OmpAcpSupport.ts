@@ -54,6 +54,9 @@ export function buildOmpAcpSpawnInput(
   environment?: NodeJS.ProcessEnv,
   options?: { readonly disableTools?: boolean },
 ): AcpSessionRuntime.AcpSpawnInput {
+  const resolvedEnvironment = ompSettings?.agentDir
+    ? buildOmpAcpEnvironment(ompSettings, environment)
+    : environment;
   return {
     command: ompSettings?.binaryPath || "omp",
     args: [
@@ -66,7 +69,7 @@ export function buildOmpAcpSpawnInput(
       "--approval-mode=always-ask",
     ],
     cwd,
-    env: buildOmpAcpEnvironment(ompSettings, environment),
+    ...(resolvedEnvironment ? { env: resolvedEnvironment } : {}),
   };
 }
 

@@ -305,3 +305,36 @@ describe("ServerSettingsPatch string normalization", () => {
     expect(encoded.providers?.codex?.launchArgs).toBe("--strict-config");
   });
 });
+
+describe("ServerSettings OMP provider", () => {
+  it("defaults legacy configs to the local OMP installation", () => {
+    expect(decodeServerSettings({}).providers.omp).toEqual({
+      enabled: true,
+      binaryPath: "omp",
+      profile: "",
+      agentDir: "",
+      launchArgs: "",
+      customModels: [],
+    });
+  });
+
+  it("normalizes OMP instance settings in patches", () => {
+    const patch = decodeServerSettingsPatch({
+      providers: {
+        omp: {
+          binaryPath: "  /opt/bin/omp  ",
+          profile: "  work  ",
+          agentDir: "  ~/.omp-work/agent  ",
+          launchArgs: "  --model openai/gpt-5  ",
+        },
+      },
+    });
+
+    expect(patch.providers?.omp).toMatchObject({
+      binaryPath: "/opt/bin/omp",
+      profile: "work",
+      agentDir: "~/.omp-work/agent",
+      launchArgs: "--model openai/gpt-5",
+    });
+  });
+});
