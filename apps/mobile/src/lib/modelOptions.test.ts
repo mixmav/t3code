@@ -54,6 +54,57 @@ describe("mobile model options", () => {
     ]);
   });
 
+  it("exposes OMP models to the provider picker and icon", () => {
+    const config = {
+      providers: [
+        {
+          instanceId: "omp",
+          driver: "omp",
+          displayName: "OMP",
+          enabled: true,
+          installed: true,
+          auth: { status: "authenticated" },
+          models: [
+            {
+              slug: "default",
+              name: "Configured model",
+              isCustom: false,
+              isDefault: true,
+              capabilities: null,
+            },
+          ],
+        },
+      ],
+    } as unknown as ServerConfig;
+
+    const options = buildModelOptions(config, null);
+
+    expect(options).toMatchObject([
+      {
+        key: "omp:default",
+        label: "Configured model",
+        providerKey: "omp",
+        providerLabel: "OMP",
+        providerDriver: "omp",
+        isDefault: true,
+        selection: {
+          instanceId: "omp",
+          model: "default",
+        },
+      },
+    ]);
+    expect(
+      buildModelMenuActions(groupByProvider(options), options[0]?.selection ?? null),
+    ).toMatchObject([
+      {
+        id: "provider:omp",
+        title: "OMP",
+        subtitle: "Configured model",
+        subactions: [{ id: "model:omp:default", title: "Configured model", state: "on" }],
+      },
+    ]);
+  });
+
   it("omits an empty provider menu when every model is legacy", () => {
     const config = {
       providers: [
