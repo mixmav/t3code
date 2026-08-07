@@ -17,8 +17,8 @@ without prompting; commands and anything else still stop for approval.
 
 **Auto**: routine actions proceed without you; risky ones still ask. How this is enforced depends
 on the provider: Codex delegates routine approvals to an AI reviewer, Claude uses its own auto
-permission mode, and providers without an equivalent (such as OpenCode) fall back to asking, like
-Supervised.
+permission mode, and providers without an equivalent (including OpenCode and OMP) fall back to
+asking, like Supervised.
 
 **Full access**: allow commands and edits without prompts. The default. The agent runs
 unattended until it finishes or asks a question of its own.
@@ -43,6 +43,10 @@ translates the mode into its approval policy and sandbox level, so **Supervised*
 with prompting enabled and a restricted workspace while **Full access** disables both. The
 labels above describe what you get; the exact per-provider translation is internal and may
 change.
+
+OMP runs with its approval requests routed through T3 Code. **Supervised** and **Auto** ask before
+commands and file changes, **Auto-accept edits** approves OMP file edits while still asking for
+commands, and **Full access** approves OMP actions without interrupting the turn.
 
 Mobile offers the same four modes. It labels the first one **Approve actions** rather than
 **Supervised**.
