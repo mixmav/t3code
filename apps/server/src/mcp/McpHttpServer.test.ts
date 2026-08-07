@@ -151,6 +151,59 @@ it.effect("terminates HTTP MCP sessions with DELETE", () =>
   ).pipe(Effect.provide(NodeHttpServer.layerTest)),
 );
 
+it.effect("accepts OMP's 2025-03-26 streamable HTTP client without version headers", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const serverLayer = McpServer.layerHttp({
+        name: "OMP MCP compatibility test",
+        version: "1.0.0",
+        path: "/mcp",
+        protocols: McpHttpServer.supportedMcpProtocols,
+      });
+      yield* HttpRouter.serve(serverLayer, {
+        disableListenLog: true,
+        disableLogger: true,
+      }).pipe(Layer.build);
+      const httpClient = yield* HttpClient.HttpClient;
+
+      const initializeResponse = yield* httpClient.post("/mcp", {
+        headers: { accept: "application/json, text/event-stream" },
+        body: HttpBody.text(
+          `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{"roots":{"listChanged":false}},"clientInfo":{"name":"oh-my-pi","version":"17.2.10"}}}`,
+          "application/json",
+        ),
+      });
+      const sessionId = initializeResponse.headers["mcp-session-id"];
+      expect(initializeResponse.status).toBe(200);
+      expect(sessionId).not.toBeNull();
+
+      const initializedResponse = yield* httpClient.post("/mcp", {
+        headers: {
+          accept: "application/json, text/event-stream",
+          "mcp-session-id": sessionId!,
+        },
+        body: HttpBody.text(
+          `{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}`,
+          "application/json",
+        ),
+      });
+      expect(initializedResponse.status).toBe(202);
+
+      const toolsResponse = yield* httpClient.post("/mcp", {
+        headers: {
+          accept: "application/json, text/event-stream",
+          "mcp-session-id": sessionId!,
+        },
+        body: HttpBody.text(
+          `{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}`,
+          "application/json",
+        ),
+      });
+      expect(toolsResponse.status).toBe(200);
+    }),
+  ).pipe(Effect.provide(NodeHttpServer.layerTest)),
+);
+
 it.effect("registers annotated tools and preserves authenticated request context", () =>
   Effect.scoped(
     Effect.gen(function* () {

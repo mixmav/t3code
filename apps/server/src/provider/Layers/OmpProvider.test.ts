@@ -57,6 +57,31 @@ describe("OMP model inventory", () => {
       },
     });
   });
+
+  it("accepts non-reasoning models with a null thinking field", () => {
+    const models = ompModelsFromInventory(
+      parseOmpModelsJson(
+        JSON.stringify({
+          models: [
+            {
+              provider: "anthropic",
+              id: "claude-haiku",
+              selector: "anthropic/claude-haiku",
+              name: "Claude Haiku",
+              reasoning: false,
+              thinking: null,
+              input: ["text"],
+            },
+          ],
+        }),
+      ),
+    );
+
+    expect(models[1]).toMatchObject({
+      slug: "anthropic/claude-haiku",
+      capabilities: { optionDescriptors: [] },
+    });
+  });
 });
 
 describe("buildInitialOmpProviderSnapshot", () => {

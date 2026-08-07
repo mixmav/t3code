@@ -38,7 +38,7 @@ import * as Stream from "effect/Stream";
 import * as SynchronizedRef from "effect/SynchronizedRef";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 import * as EffectAcpErrors from "effect-acp/errors";
-import type * as EffectAcpSchema from "effect-acp/schema";
+import * as EffectAcpSchema from "effect-acp/schema";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
@@ -554,54 +554,66 @@ export function makeOmpAdapter(ompSettings: OmpSettings, options?: OmpAdapterLiv
                 }),
             ),
           );
+          const handleElicitationRequest = (
+            params: EffectAcpSchema.ElicitationRequest,
+            method: "session/elicitation" | "elicitation/create",
+          ) =>
+            mapExtensionFailure(
+              Effect.gen(function* () {
+                yield* logNative(input.threadId, method, params, "acp.jsonrpc");
+                if (params.mode !== "form") {
+                  return { action: "decline" as const };
+                }
+                const requestId = ApprovalRequestId.make(yield* randomUUIDv4);
+                const runtimeRequestId = RuntimeRequestId.make(requestId);
+                const resolution = yield* Deferred.make<PendingUserInputResolution>();
+                pendingUserInputs.set(requestId, { resolution });
+                yield* offerRuntimeEvent({
+                  type: "user-input.requested",
+                  ...(yield* makeEventStamp()),
+                  provider: PROVIDER,
+                  threadId: input.threadId,
+                  turnId: ctx?.activeTurnId,
+                  requestId: runtimeRequestId,
+                  payload: { questions: ompElicitationQuestions(params) },
+                  raw: {
+                    source: "acp.jsonrpc",
+                    method,
+                    payload: params,
+                  },
+                });
+                const resolved = yield* Deferred.await(resolution);
+                pendingUserInputs.delete(requestId);
+                const answers = resolved._tag === "answered" ? resolved.answers : {};
+                yield* offerRuntimeEvent({
+                  type: "user-input.resolved",
+                  ...(yield* makeEventStamp()),
+                  provider: PROVIDER,
+                  threadId: input.threadId,
+                  turnId: ctx?.activeTurnId,
+                  requestId: runtimeRequestId,
+                  payload: { answers },
+                });
+                return resolved._tag === "cancelled"
+                  ? { action: "cancel" as const }
+                  : {
+                      action: "accept" as const,
+                      content: ompElicitationContentFromAnswers(params, resolved.answers),
+                    };
+              }),
+            );
           const started = yield* Effect.gen(function* () {
             yield* acp.handleElicitation((params) =>
-              mapExtensionFailure(
-                Effect.gen(function* () {
-                  yield* logNative(input.threadId, "session/elicitation", params, "acp.jsonrpc");
-                  if (params.mode !== "form") {
-                    return { action: { action: "decline" as const } };
-                  }
-                  const requestId = ApprovalRequestId.make(yield* randomUUIDv4);
-                  const runtimeRequestId = RuntimeRequestId.make(requestId);
-                  const resolution = yield* Deferred.make<PendingUserInputResolution>();
-                  pendingUserInputs.set(requestId, { resolution });
-                  yield* offerRuntimeEvent({
-                    type: "user-input.requested",
-                    ...(yield* makeEventStamp()),
-                    provider: PROVIDER,
-                    threadId: input.threadId,
-                    turnId: ctx?.activeTurnId,
-                    requestId: runtimeRequestId,
-                    payload: { questions: ompElicitationQuestions(params) },
-                    raw: {
-                      source: "acp.jsonrpc",
-                      method: "session/elicitation",
-                      payload: params,
-                    },
-                  });
-                  const resolved = yield* Deferred.await(resolution);
-                  pendingUserInputs.delete(requestId);
-                  const answers = resolved._tag === "answered" ? resolved.answers : {};
-                  yield* offerRuntimeEvent({
-                    type: "user-input.resolved",
-                    ...(yield* makeEventStamp()),
-                    provider: PROVIDER,
-                    threadId: input.threadId,
-                    turnId: ctx?.activeTurnId,
-                    requestId: runtimeRequestId,
-                    payload: { answers },
-                  });
-                  return resolved._tag === "cancelled"
-                    ? { action: { action: "cancel" as const } }
-                    : {
-                        action: {
-                          action: "accept" as const,
-                          content: ompElicitationContentFromAnswers(params, resolved.answers),
-                        },
-                      };
-                }),
+              handleElicitationRequest(params, "session/elicitation").pipe(
+                Effect.map((action) => ({ action })),
               ),
+            );
+            // OMP v17 emits the unstable SDK method name rather than the
+            // newer ACP session/elicitation method.
+            yield* acp.handleExtRequest(
+              "elicitation/create",
+              EffectAcpSchema.ElicitationRequest,
+              (params) => handleElicitationRequest(params, "elicitation/create"),
             );
             yield* acp.handleRequestPermission((params) =>
               mapExtensionFailure(

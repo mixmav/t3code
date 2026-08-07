@@ -64,9 +64,6 @@ export function buildOmpAcpSpawnInput(
       ...tokenizeCliArgs(ompSettings?.launchArgs ?? ""),
       ...(ompSettings?.profile ? ["--profile", ompSettings.profile] : []),
       ...(options?.disableTools ? ["--no-tools"] : []),
-      // Keep this last so custom launch arguments cannot silently bypass T3's
-      // permission UI. Runtime modes decide which requests are auto-approved.
-      "--approval-mode=always-ask",
     ],
     cwd,
     ...(resolvedEnvironment ? { env: resolvedEnvironment } : {}),
@@ -84,9 +81,12 @@ export const makeOmpAcpRuntime = (
     const acpContext = yield* Layer.build(
       AcpSessionRuntime.layer({
         ...input,
-        spawn: buildOmpAcpSpawnInput(input.ompSettings, input.cwd, input.environment, {
-          ...(input.disableTools === undefined ? {} : { disableTools: input.disableTools }),
-        }),
+        spawn: buildOmpAcpSpawnInput(
+          input.ompSettings,
+          input.cwd,
+          input.environment,
+          input.disableTools ? { disableTools: true } : undefined,
+        ),
         authMethodId: "agent",
         clientCapabilities: { elicitation: { form: {} } },
       }).pipe(

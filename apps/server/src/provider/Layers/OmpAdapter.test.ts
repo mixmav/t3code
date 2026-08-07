@@ -7,6 +7,7 @@ import * as NodeURL from "node:url";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import {
+  ApprovalRequestId,
   OmpSettings,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -110,6 +111,81 @@ it.layer(ompAdapterTestLayer)("OmpAdapter", (it) => {
         assert.equal(delta.payload.delta, "hello from mock");
       }
 
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+  it.effect("bridges ACP form elicitations through user input events", () =>
+    Effect.gen(function* () {
+      const threadId = ThreadId.make("omp-form-elicitation");
+      const wrapperPath = yield* Effect.promise(() =>
+        makeMockOmpWrapper({ T3_ACP_EMIT_ELICITATION: "1" }),
+      );
+      const adapter = yield* makeOmpAdapter(decodeOmpSettings({ binaryPath: wrapperPath })).pipe(
+        Effect.orDie,
+      );
+      const requested =
+        yield* Deferred.make<Extract<ProviderRuntimeEvent, { type: "user-input.requested" }>>();
+      const resolved =
+        yield* Deferred.make<Extract<ProviderRuntimeEvent, { type: "user-input.resolved" }>>();
+      const content = yield* Deferred.make<string>();
+
+      const eventsFiber = yield* Stream.runForEach(adapter.streamEvents, (event) => {
+        if (String(event.threadId) !== String(threadId)) {
+          return Effect.void;
+        }
+        if (event.type === "user-input.requested") {
+          return Deferred.succeed(requested, event).pipe(Effect.ignore);
+        }
+        if (event.type === "user-input.resolved") {
+          return Deferred.succeed(resolved, event).pipe(Effect.ignore);
+        }
+        if (event.type === "content.delta") {
+          return Deferred.succeed(content, event.payload.delta).pipe(Effect.ignore);
+        }
+        return Effect.void;
+      }).pipe(Effect.forkChild);
+
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("omp"),
+        cwd: process.cwd(),
+        runtimeMode: "full-access",
+      });
+      const sendTurnFiber = yield* adapter
+        .sendTurn({ threadId, input: "ask before continuing", attachments: [] })
+        .pipe(Effect.forkChild);
+
+      const requestedEvent = yield* Effect.raceFirst(
+        Deferred.await(requested),
+        Fiber.join(sendTurnFiber).pipe(
+          Effect.andThen(Effect.die(new Error("OMP turn completed before form elicitation"))),
+        ),
+      );
+      assert.deepEqual(requestedEvent.payload.questions, [
+        {
+          id: "strategy",
+          header: "Strategy",
+          question: "Choose an OMP strategy.",
+          options: [
+            { label: "fast", description: "fast" },
+            { label: "safe", description: "safe" },
+          ],
+        },
+      ]);
+      assert.equal(requestedEvent.raw?.method, "elicitation/create");
+
+      yield* adapter.respondToUserInput(
+        threadId,
+        ApprovalRequestId.make(String(requestedEvent.requestId)),
+        { strategy: "safe" },
+      );
+
+      const resolvedEvent = yield* Deferred.await(resolved);
+      assert.deepEqual(resolvedEvent.payload.answers, { strategy: "safe" });
+      assert.equal(yield* Deferred.await(content), "selected:safe");
+      yield* Fiber.join(sendTurnFiber);
+
+      yield* Fiber.interrupt(eventsFiber);
       yield* adapter.stopSession(threadId);
     }),
   );

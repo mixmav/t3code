@@ -216,11 +216,26 @@ export const PreviewToolkitRegistrationLive = Layer.mergeAll(
   PreviewSnapshotRegistrationLive,
 );
 
+const mcpProtocol2025_03_26 = {
+  ...McpProtocol.v2025_06_18,
+  protocolVersion: "2025-03-26",
+  transport: {
+    acceptsJsonRpcBatches: true,
+    requiresVersionHeader: false,
+  },
+} as unknown as McpProtocol.ProtocolAdapter;
+
+// OMP's MCP client currently speaks the Streamable HTTP protocol introduced
+// in 2025-03-26 and omits the version header. Its tools/list and tools/call
+// payloads are compatible with the schemas used by Effect's 2025-06-18
+// adapter, so keep both wire versions at this boundary.
+export const supportedMcpProtocols = [McpProtocol.v2025_06_18, mcpProtocol2025_03_26] as const;
+
 const McpTransportLive = McpServer.layerHttp({
   name: "T3 Code",
   version: packageJson.version,
   path: "/mcp",
-  protocols: [McpProtocol.v2025_06_18],
+  protocols: supportedMcpProtocols,
 }).pipe(Layer.provide(McpAuthMiddlewareLive));
 
 export const layer = PreviewToolkitRegistrationLive.pipe(Layer.provideMerge(McpTransportLive));

@@ -1,6 +1,6 @@
 import * as Effect from "effect/Effect";
 import type * as EffectAcpSchema from "effect-acp/schema";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it } from "@effect/vitest";
 
 import {
   applyOmpAcpModelSelection,
@@ -12,15 +12,15 @@ import {
 } from "./OmpAcpSupport.ts";
 
 describe("buildOmpAcpSpawnInput", () => {
-  it("builds the safe default OMP ACP command", () => {
+  it("lets OMP route its default ACP permission gate through the client", () => {
     expect(buildOmpAcpSpawnInput(undefined, "/tmp/project")).toEqual({
       command: "omp",
-      args: ["acp", "--approval-mode=always-ask"],
+      args: ["acp"],
       cwd: "/tmp/project",
     });
   });
 
-  it("applies instance isolation and keeps the approval policy authoritative", () => {
+  it("applies instance isolation without overriding OMP approval settings", () => {
     expect(
       buildOmpAcpSpawnInput(
         {
@@ -43,7 +43,6 @@ describe("buildOmpAcpSpawnInput", () => {
         "--profile",
         "work",
         "--no-tools",
-        "--approval-mode=always-ask",
       ],
       cwd: "/tmp/project",
       env: {
@@ -55,50 +54,50 @@ describe("buildOmpAcpSpawnInput", () => {
 });
 
 describe("applyOmpAcpModelSelection", () => {
-  it("leaves OMP's configured model alone and applies explicit selections", async () => {
-    const calls: Array<{ readonly configId: string; readonly value: string | boolean }> = [];
-    const runtime = {
-      setConfigOption: (configId: string, value: string | boolean) =>
-        Effect.sync(() => {
-          calls.push({ configId, value });
-        }),
-    };
+  it.effect("leaves OMP's configured model alone and applies explicit selections", () =>
+    Effect.gen(function* () {
+      const calls: Array<{ readonly configId: string; readonly value: string | boolean }> = [];
+      const runtime = {
+        setConfigOption: (configId: string, value: string | boolean) =>
+          Effect.sync(() => {
+            calls.push({ configId, value });
+          }),
+      };
 
-    await Effect.runPromise(
-      applyOmpAcpModelSelection({
+      yield* applyOmpAcpModelSelection({
         runtime,
         model: "default",
         selections: [{ id: "thinking", value: "high" }],
         mapError: ({ cause }) => cause,
-      }),
-    );
+      });
 
-    expect(calls).toEqual([{ configId: "thinking", value: "high" }]);
-  });
+      expect(calls).toEqual([{ configId: "thinking", value: "high" }]);
+    }),
+  );
 
-  it("sets a provider-qualified model before its thinking level", async () => {
-    const calls: Array<{ readonly configId: string; readonly value: string | boolean }> = [];
-    const runtime = {
-      setConfigOption: (configId: string, value: string | boolean) =>
-        Effect.sync(() => {
-          calls.push({ configId, value });
-        }),
-    };
+  it.effect("sets a provider-qualified model before its thinking level", () =>
+    Effect.gen(function* () {
+      const calls: Array<{ readonly configId: string; readonly value: string | boolean }> = [];
+      const runtime = {
+        setConfigOption: (configId: string, value: string | boolean) =>
+          Effect.sync(() => {
+            calls.push({ configId, value });
+          }),
+      };
 
-    await Effect.runPromise(
-      applyOmpAcpModelSelection({
+      yield* applyOmpAcpModelSelection({
         runtime,
         model: "openai/gpt-5",
         selections: [{ id: "thinking", value: "xhigh" }],
         mapError: ({ cause }) => cause,
-      }),
-    );
+      });
 
-    expect(calls).toEqual([
-      { configId: "model", value: "openai/gpt-5" },
-      { configId: "thinking", value: "xhigh" },
-    ]);
-  });
+      expect(calls).toEqual([
+        { configId: "model", value: "openai/gpt-5" },
+        { configId: "thinking", value: "xhigh" },
+      ]);
+    }),
+  );
 });
 
 const permissionRequest: EffectAcpSchema.RequestPermissionRequest = {

@@ -18,6 +18,7 @@ const emitInterleavedAssistantToolCalls =
   process.env.T3_ACP_EMIT_INTERLEAVED_ASSISTANT_TOOL_CALLS === "1";
 const emitGenericToolPlaceholders = process.env.T3_ACP_EMIT_GENERIC_TOOL_PLACEHOLDERS === "1";
 const emitAskQuestion = process.env.T3_ACP_EMIT_ASK_QUESTION === "1";
+const emitElicitation = process.env.T3_ACP_EMIT_ELICITATION === "1";
 const emitXAiAskUserQuestion = process.env.T3_ACP_EMIT_XAI_ASK_USER_QUESTION === "1";
 const emitXAiPromptCompleteThenHang = process.env.T3_ACP_EMIT_XAI_PROMPT_COMPLETE_THEN_HANG === "1";
 const emitForeignSessionUpdates = process.env.T3_ACP_EMIT_FOREIGN_SESSION_UPDATES === "1";
@@ -751,6 +752,48 @@ const program = Effect.gen(function* () {
           },
         });
 
+        return { stopReason: "end_turn" };
+      }
+
+      if (emitElicitation) {
+        const result = yield* agent.client.extRequest("elicitation/create", {
+          mode: "form",
+          sessionId: requestedSessionId,
+          message: "Choose an OMP strategy.",
+          requestedSchema: {
+            type: "object",
+            properties: {
+              strategy: {
+                type: "string",
+                title: "Strategy",
+                enum: ["fast", "safe"],
+              },
+            },
+            required: ["strategy"],
+          },
+        });
+        if (
+          typeof result !== "object" ||
+          result === null ||
+          !("action" in result) ||
+          result.action !== "accept" ||
+          !("content" in result) ||
+          typeof result.content !== "object" ||
+          result.content === null ||
+          !("strategy" in result.content)
+        ) {
+          return { stopReason: "cancelled" };
+        }
+        yield* agent.client.sessionUpdate({
+          sessionId: requestedSessionId,
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: {
+              type: "text",
+              text: `selected:${String(result.content.strategy)}`,
+            },
+          },
+        });
         return { stopReason: "end_turn" };
       }
 

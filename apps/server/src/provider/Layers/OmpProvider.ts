@@ -43,7 +43,7 @@ const OmpModelInfo = Schema.Struct({
   selector: Schema.String,
   name: Schema.String,
   reasoning: Schema.optional(Schema.Boolean),
-  thinking: Schema.optional(Schema.Array(Schema.String)),
+  thinking: Schema.optional(Schema.NullOr(Schema.Array(Schema.String))),
   input: Schema.optional(Schema.Array(Schema.String)),
 });
 const OmpModelsOutput = Schema.Struct({ models: Schema.Array(OmpModelInfo) });
@@ -98,6 +98,14 @@ const DEFAULT_MODEL: ServerProviderModel = {
 
 export function parseOmpModelsJson(stdout: string): ReadonlyArray<OmpModelInfo> {
   return decodeOmpModelsJson(stdout).models;
+}
+
+function tryParseOmpModelsJson(stdout: string): ReadonlyArray<OmpModelInfo> | undefined {
+  try {
+    return parseOmpModelsJson(stdout);
+  } catch {
+    return undefined;
+  }
 }
 
 export function ompModelsFromInventory(
@@ -322,10 +330,8 @@ export const checkOmpProviderStatus = Effect.fn("checkOmpProviderStatus")(functi
     });
   }
 
-  let inventory: ReadonlyArray<OmpModelInfo>;
-  try {
-    inventory = parseOmpModelsJson(modelsOutput.stdout);
-  } catch {
+  const inventory = tryParseOmpModelsJson(modelsOutput.stdout);
+  if (!inventory) {
     return buildServerProvider({
       presentation: OMP_PRESENTATION,
       enabled: true,
