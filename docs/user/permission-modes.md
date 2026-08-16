@@ -48,5 +48,4 @@ OMP runs with its approval requests routed through T3 Code. **Supervised** and *
 commands and file changes, **Auto-accept edits** approves OMP file edits while still asking for
 commands, and **Full access** approves OMP actions without interrupting the turn.
 
-Mobile offers the same four modes. It labels the first one **Approve actions** rather than
-**Supervised**.
+Mobile offers the same four modes with the same labels and descriptions.
