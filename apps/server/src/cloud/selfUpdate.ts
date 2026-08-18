@@ -5,7 +5,7 @@ import {
   type ServerSelfUpdateProgressStage,
   type ServerSelfUpdateResult,
 } from "@t3tools/contracts";
-import { HostProcessExecutablePath } from "@t3tools/shared/hostProcess";
+import { HostProcessEnvironment, HostProcessExecutablePath } from "@t3tools/shared/hostProcess";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -26,11 +26,18 @@ import * as ServiceLauncherClient from "./serviceLauncherClient.ts";
 import { isExactServiceVersion, SERVICE_LAUNCHER_PROTOCOL } from "./serviceProtocol.ts";
 
 const PREFLIGHT_TIMEOUT = Duration.seconds(30);
+const DISABLE_SERVER_SELF_UPDATE_ENV = "T3CODE_DISABLE_SELF_UPDATE";
+
+function serverSelfUpdateDisabled(environment: NodeJS.ProcessEnv): boolean {
+  return environment[DISABLE_SERVER_SELF_UPDATE_ENV] === "true";
+}
 
 export function resolveServerSelfUpdateCapability(input: {
   readonly desktopManaged: boolean;
   readonly launcherManaged: boolean;
+  readonly environment: NodeJS.ProcessEnv;
 }): ServerSelfUpdateCapability | null {
+  if (serverSelfUpdateDisabled(input.environment)) return null;
   if (input.desktopManaged) return "desktop-managed" as const;
   return input.launcherManaged ? ("boot-service" as const) : null;
 }
@@ -53,9 +60,13 @@ export const make = Effect.fn("cloud.server_self_update.make")(function* () {
   const path = yield* Path.Path;
   const execPath = yield* HostProcessExecutablePath;
   const inFlight = yield* Ref.make(false);
+  const environment = yield* HostProcessEnvironment;
 
-  const capability: ServerSelfUpdateCapability | null =
-    serverConfig.mode === "desktop" ? "desktop-managed" : launcher.managed ? "boot-service" : null;
+  const capability = resolveServerSelfUpdateCapability({
+    desktopManaged: serverConfig.mode === "desktop",
+    launcherManaged: launcher.managed,
+    environment,
+  });
   const failWith = (reason: string, cause?: unknown) =>
     cause === undefined
       ? new ServerSelfUpdateError({ reason })
@@ -71,10 +82,11 @@ export const make = Effect.fn("cloud.server_self_update.make")(function* () {
     }
     if (capability === null) {
       return yield* failWith(
-        "Remote updates require the T3 Code background service. Run `t3 service install` on the server machine.",
+        serverSelfUpdateDisabled(environment)
+          ? "Remote server updates are disabled by deployment policy."
+          : "Remote updates require the T3 Code background service. Run `t3 service install` on the server machine.",
       );
     }
-
     const targetVersion = input.targetVersion.trim();
     if (!isExactServiceVersion(targetVersion)) {
       return yield* failWith(`'${targetVersion}' is not an exact t3 version.`);
