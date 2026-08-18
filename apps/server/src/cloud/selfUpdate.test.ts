@@ -108,28 +108,6 @@ it.layer(NodeServices.layer)("server self update", (it) => {
       expect(order).toEqual(["install", "preflight", "accept"]);
     }),
   );
-  it.effect("omits self-update capability when disabled by the host environment", () =>
-    Effect.sync(() => {
-      expect(
-        ServerSelfUpdate.resolveServerSelfUpdateCapability({
-          desktopManaged: false,
-          launcherManaged: true,
-          environment: { T3CODE_DISABLE_SELF_UPDATE: "true" },
-        }),
-      ).toBeNull();
-    }),
-  );
-  it.effect("rejects deployment-disabled updates before running npm", () =>
-    Effect.gen(function* () {
-      const { selfUpdate, order } = yield* makeHarness({
-        environment: { T3CODE_DISABLE_SELF_UPDATE: "true" },
-      });
-      expect((yield* selfUpdate.update({ targetVersion: "1.1.0" }).pipe(Effect.flip)).reason).toBe(
-        "Remote server updates are disabled by deployment policy.",
-      );
-      expect(order).toEqual([]);
-    }),
-  );
 
   it.effect("rejects invalid versions and desktop-managed servers before staging", () =>
     Effect.gen(function* () {
@@ -171,6 +149,37 @@ it.layer(NodeServices.layer)("server self update", (it) => {
       );
       yield* Deferred.succeed(accepted, "launcher-id");
       expect((yield* Fiber.join(first)).updateId).toBe("launcher-id");
+    }),
+  );
+
+  it.effect("resolves launcher capability from the host update policy", () =>
+    Effect.sync(() => {
+      expect(
+        ServerSelfUpdate.resolveServerSelfUpdateCapability({
+          desktopManaged: false,
+          launcherManaged: true,
+          environment: {},
+        }),
+      ).toBe("boot-service");
+      expect(
+        ServerSelfUpdate.resolveServerSelfUpdateCapability({
+          desktopManaged: false,
+          launcherManaged: true,
+          environment: { T3CODE_DISABLE_SELF_UPDATE: "true" },
+        }),
+      ).toBeNull();
+    }),
+  );
+
+  it.effect("rejects deployment-disabled updates before running npm", () =>
+    Effect.gen(function* () {
+      const { selfUpdate, order } = yield* makeHarness({
+        environment: { T3CODE_DISABLE_SELF_UPDATE: "true" },
+      });
+      expect((yield* selfUpdate.update({ targetVersion: "1.1.0" }).pipe(Effect.flip)).reason).toBe(
+        "Remote server updates are disabled by deployment policy.",
+      );
+      expect(order).toEqual([]);
     }),
   );
 });
